@@ -7,7 +7,7 @@ import pickle
 from os.path import basename, splitext
 
 class limg(object):
-  def __init__(self, img, M, Minv, mtx, dist, name='curr'):
+  def __init__(self, img, M, Minv, mtx, dist, name='curr', show_plot=False, save_plot=True):
     self.img = img
     self.img_shape = (img.shape[1], img.shape[0])
     self.M = M
@@ -15,6 +15,9 @@ class limg(object):
     self.mtx = mtx
     self.dist = dist
     self.name = splitext(basename(name))[0]
+    self.savename = self.name + '_out.png'
+    self.show_plot = show_plot
+    self.save_plot = save_plot
 
     self.calc_undistort()
     self.get_warp()
@@ -36,6 +39,7 @@ class limg(object):
     self.fitpoly()
     self.get_rect_plots()
     self.get_curvature()
+    self.plot_process()
 
     # Now our radius of curvature is in meters
     print("Curvature. Left: {:.0f} m Right: {:.0f} m".format(self.left_curverad, self.right_curverad))
@@ -165,64 +169,61 @@ class limg(object):
     self.left_curverad = ((1 + (2*left_fit_cr[0]*y_eval*self.ym_per_pix + left_fit_cr[1])**2)**1.5) / np.absolute(2*left_fit_cr[0])
     self.right_curverad = ((1 + (2*right_fit_cr[0]*y_eval*self.ym_per_pix + right_fit_cr[1])**2)**1.5) / np.absolute(2*right_fit_cr[0])
 
+  def plot_process(self):
+    f,axs = plt.subplots(2,3, figsize=(28,16))
+    axs[0,0].imshow(img2RGB(self.undist))
+    axs[0,1].imshow(self.gray, cmap='gray')
+    axs[0,2].imshow(self.binary_warped, cmap='gray')
 
-  def plot_process(undist, warped, Minv ,binary_warped, left_fit, right_fit, out_img, i):
-    f,axs = plt.subplots(2,3)
-    axs[0,0].imshow(img2RGB(undist))
-    axs[0,1].imshow(img2s(warped), cmap='gray')
-    axs[0,2].imshow(binary_warped, cmap='gray')
 
-
-    plot_rect_method(axs[1,0], ploty, left_fitx, right_fitx, out_img)
-
-    #plt.xlim(0, 1280)
-    #plt.ylim(720, 0)
-    plot_2d_lane(axs[1,1], ploty, left_fitx, right_fitx, warped)
-    plot_lane(axs[1,2], undist, ploty, left_fitx, right_fitx, Minv)
-    plt.show()
-    savename = str(i) + '_out.png'
-    #print(savename)
-    #plt.savefig(savename)
+    self.plot_rect_method(axs[1,0])
+    self.plot_2d_lane(axs[1,1])
+    self.plot_lane(axs[1,2])
+    if self.save_plot:
+      plt.savefig(self.savename)
+    if self.show_plot:
+      plt.show()
     plt.close()
-    return left_curved, right_curved
 
   def get_rect_plots(self):
     self.ploty = np.linspace(0, self.binary_warped.shape[0]-1, self.binary_warped.shape[0] )
     self.left_fitx = self.left_fit[0]*self.ploty**2 + self.left_fit[1]*self.ploty + self.left_fit[2]
     self.right_fitx = self.right_fit[0]*self.ploty**2 + self.right_fit[1]*self.ploty + self.right_fit[2]
 
-  def plot_rect_method(ax, ploty, left_fitx, right_fitx, out_img):
+  def plot_rect_method(self, ax):
+    ax.imshow(self.out_img)
+    self.plot_2d_lane_fits(ax, color='yellow')
+    ax.set_xlim(0, self.img_shape[0])
+    ax.set_ylim(self.img_shape[1], 0)
 
-    ax.imshow(out_img)
-    ax.plot(left_fitx, ploty, color='yellow')
-    ax.plot(right_fitx, ploty, color='yellow')
+  def plot_2d_lane(self, ax):
+    ax.imshow(img2RGB(self.warped))
+    self.plot_2d_lane_fits(ax, color='green')
+    ax.set_xlim(0, self.img_shape[0])
+    ax.set_ylim(self.img_shape[1], 0)
 
-  def plot_2d_lane(ax, ploty, left_fitx, right_fitx, warped):
-    ax.imshow(img2RGB(warped))
-    ax.plot(left_fitx, ploty, color='green')
-    ax.plot(right_fitx, ploty, color='green')
+  def plot_2d_lane_fits(self, ax, color='yellow'):
+    ax.plot(self.left_fitx,  self.ploty, color=color)
+    ax.plot(self.right_fitx, self.ploty, color=color)
 
-  def plot_lane(ax, undist, ploty, left_fitx, right_fitx, Minv):
-  # Create an image to draw the lines on
-    color_warp = np.zeros_like(undist).astype(np.uint8)
+  def plot_lane(self, ax):
+    # Create an image to draw the lines on
+    color_warp = np.zeros_like(self.undist).astype(np.uint8)
     #color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
 
     # Recast the x and y points into usable format for cv2.fillPoly()
-    pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
-    pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
+    pts_left = np.array([np.transpose(np.vstack([self.left_fitx, self.ploty]))])
+    pts_right = np.array([np.flipud(np.transpose(np.vstack([self.right_fitx, self.ploty])))])
     pts = np.hstack((pts_left, pts_right))
-
 
     # Draw the lane onto the warped blank image
     cv2.fillPoly(color_warp, np.int_([pts]), (0,255, 0))
 
     # Warp the blank back to original image space using inverse perspective matrix (Minv)
-    newwarp = cv2.warpPerspective(color_warp, Minv, (undist.shape[1], undist.shape[0])) 
+    newwarp = cv2.warpPerspective(color_warp, self.Minv, self.img_shape) 
     # Combine the result with the original image
-    result = cv2.addWeighted(undist, 1, newwarp, 0.3, 0)
+    result = cv2.addWeighted(self.undist, 1, newwarp, 0.3, 0)
     ax.imshow(img2RGB(result))
-
-
 
 def read_img(filename):
   img = cv2.imread(filename)
@@ -408,7 +409,7 @@ def plot_warped_binary(axs, i, warped, warped_binary):
 
 
 
-def do_stuff():
+def do_stuff(show_plot=True, save_plot=True):
   do_cal = False
   check_cal = False
   do_plot_binary = False
@@ -430,9 +431,7 @@ def do_stuff():
 
   for i in range(len(filenames)):
     img = read_img(filenames[i])
-    ll = limg(img, M, Minv, mtx, dist, filenames[i])
-
-
+    ll = limg(img, M, Minv, mtx, dist, filenames[i], show_plot=show_plot, save_plot=save_plot)
 
   return 1
 
