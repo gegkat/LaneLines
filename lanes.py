@@ -37,13 +37,13 @@ class limg(object):
     self.do_thresh()
     self.get_combined_binary()
     self.fitpoly()
-    self.get_rect_plots()
+    self.get_rect_plot_points()
     self.get_curvature()
-    self.plot_process()
+    if self.show_plot or self.save_plot:
+      self.plot_process()
 
     # Now our radius of curvature is in meters
     print("Curvature. Left: {:.0f} m Right: {:.0f} m".format(self.left_curverad, self.right_curverad))
-
 
   def calc_undistort(self):
     self.undist = cv2.undistort(self.img, self.mtx, self.dist, None, self.mtx)
@@ -185,7 +185,7 @@ class limg(object):
       plt.show()
     plt.close()
 
-  def get_rect_plots(self):
+  def get_rect_plot_points(self):
     self.ploty = np.linspace(0, self.binary_warped.shape[0]-1, self.binary_warped.shape[0] )
     self.left_fitx = self.left_fit[0]*self.ploty**2 + self.left_fit[1]*self.ploty + self.left_fit[2]
     self.right_fitx = self.right_fit[0]*self.ploty**2 + self.right_fit[1]*self.ploty + self.right_fit[2]
@@ -359,26 +359,6 @@ def combine_binary(binary1, binary2, type):
      
   return combined_binary
 
-def undistort(img, mtx, dist):
-  return cv2.undistort(img, mtx, dist, None, mtx)
-
-def plot_binary(img, combined_binary, color_binary):
-  # Plotting thresholded images
- f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20,10))
- ax1.set_title('Stacked thresholds')
- ax1.imshow(color_binary*255)
-
- ax2.set_title('Combined S channel and gradient thresholds')
- ax2.imshow(combined_binary, cmap='gray')
-
- ax3.set_title('Original image')
- ax3.imshow(img2gray(img), cmap='gray')
-
- #plt.savefig('thresh.png')
-
- plt.show()
-
-
 def warp(img, src, offset):
 
   offsetx = offset[0] # offset for dst points
@@ -399,21 +379,10 @@ def warp(img, src, offset):
   Minv = cv2.getPerspectiveTransform(dst, src)
   return M, Minv, img_size
 
-def plot_warped_binary(axs, i, warped, warped_binary):
-    # Warp the image using OpenCV warpPerspective()
-    #warped = cv2.warpPerspective(undist, M, img_size)
-    #warped_binary = cv2.warpPerspective(combined_binary, M, img_size)
-    #axs[i,0].imshow(img2RGB(undist))
-    axs[i,0].imshow(img2RGB(warped))
-    axs[i,1].imshow(warped_binary, cmap='gray')
-
-
 
 def do_stuff(show_plot=True, save_plot=True):
   do_cal = False
   check_cal = False
-  do_plot_binary = False
-  do_plot_warped_binary = True
 
   nx = 9
   ny = 6
