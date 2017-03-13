@@ -276,7 +276,8 @@ def run_calibration(directory, nx, ny):
   images = glob.glob(directory)
   mtx, dist = get_calibration(images, nx, ny)
 
-  undist = undistort_file(images[0], mtx, dist)
+  img = read_img(images[0])
+  undist = cv2.undistort(img, mtx, dist, None, mtx)
 
   # For source points I'm grabbing the outer four detected corners
   src = np.float32([(595, 450), (680, 450), (1080, 720), (230, 720), ])
@@ -290,20 +291,16 @@ def run_calibration(directory, nx, ny):
   dist_pickle["Minv"] = Minv
   pickle.dump( dist_pickle, open( "camera_cal/cal.p", "wb" ) )
 
-def check_calibration(filename, nx, ny, mtx, dist):
-  undist, warped = corners_unwarp(filename, nx, ny, mtx, dist)
+def check_calibration(filename, mtx, dist):
+  img = read_img(filename)
+  undist = cv2.undistort(img, mtx, dist, None, mtx)
 
-  height = int(img.shape[0]/2)
-  width = int(img.shape[1]/2)
-  cv2.imshow('orig', cv2.resize(img, (width, height)))
-  cv2.imshow('undist', cv2.resize(undist, (width, height)))
-  try:
-    cv2.imshow('warped', cv2.resize(warped, (width, height)))
-  except:
-    pass
-
-  cv2.waitKey(100000)
-  cv2.destroyAllWindows()
+  plt.figure()
+  plt.imshow(img2RGB(img))
+  plt.figure()
+  plt.imshow(img2RGB(undist))
+  plt.show()
+  plt.close()
 
 def load_calibration():
   dist_pickle = pickle.load( open( "camera_cal/cal.p", "rb" ) )
@@ -393,7 +390,7 @@ def do_stuff(show_plot=True, save_plot=True):
   mtx, dist, M, Minv = load_calibration()
 
   if check_cal:
-    check_calibration('test_images/test1.jpg', nx, ny, mtx, dist)
+    check_calibration('camera_cal/calibration1.jpg', mtx, dist)
 
   filenames = glob.glob('test_images/*.jpg')
   #filenames = ['test_images/test5.jpg']
