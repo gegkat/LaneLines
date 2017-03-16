@@ -59,7 +59,8 @@ class Line():
         self.recent_xfitted = []
 
   def get_geometry(self, x, y, img_shape):
-    y_eval = np.max(y)
+    y = img_shape[1] - y
+    y_eval = 0
 
     # Fit new polynomials to x,y in world space
     fit_cr =  np.polyfit(y*self.ym_per_pix, x*self.xm_per_pix, 2)
@@ -402,7 +403,7 @@ class limg(object):
     cv2.putText(self.lane_img, s, (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, 255)
     cv2.putText(self.lane_img, s2, (50, 120), cv2.FONT_HERSHEY_SIMPLEX, 1, 255)
     cv2.putText(self.lane_img, s3, (50, 160), cv2.FONT_HERSHEY_SIMPLEX, 1, 255) 
-    #cv2.putText(self.lane_img, s4, (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, 255) 
+    #frhgtfutubbtfdkuvcbjrtigcnbrlvlccv2.putText(self.lane_img, s4, (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, 255) 
 
 def read_img(filename):
   img = cv2.imread(filename)
@@ -574,15 +575,16 @@ def do_stuff(show_plot=True, save_plot=True, fname='project_video.mp4', MAX_FRAM
   if check_cal:
     check_calibration('camera_cal/calibration1.jpg', mtx, dist)
 
-  filenames = glob.glob('test_images/*.jpg')
-  #filenames = ['test_images/test5.jpg']
+  #filenames = glob.glob('test_images/*.jpg')
+  filenames = ['test_images/test1.jpg']
 
   ll = limg(M, Minv, mtx, dist, show_plot=show_plot, save_plot=save_plot)
-  #for i in range(len(filenames)):
+  # for i in range(len(filenames)):
   #  img = read_img(filenames[i])
   #  img = img2RGB(img)
   #  ll.process_img(img, filenames[i])
 
+  # return ll
 
   clip = VideoFileClip(fname)
   n_frames = int(clip.fps * clip.duration)
