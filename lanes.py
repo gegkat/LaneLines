@@ -83,10 +83,16 @@ class limg(object):
     self.show_plot = show_plot
     self.save_plot = save_plot
 
-    self.sx_thresh=(10, 255)
-    self.sy_thresh=(5,255)
-    self.dir_thresh=(0, 10)
-    self.gray_thresh=(30,255)
+    # self.sx_thresh=(10, 255)
+    # self.sy_thresh=(5,255)
+    # self.dir_thresh=(0, 10)
+    # self.gray_thresh=(30,255)
+
+
+    self.sx_thresh=(6, 255)
+    self.sy_thresh=(3,255)
+    self.dir_thresh=(0, 30)
+    self.gray_thresh=(15,255)
 
     self.mixing_factor = 0.5
 
