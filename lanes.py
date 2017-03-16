@@ -5,45 +5,183 @@ import matplotlib.image as mpimg
 import glob
 import pickle
 from os.path import basename, splitext
+from moviepy.editor import VideoFileClip, ImageSequenceClip
+
+class Line():
+  def __init__(self):
+    # x values of the last n fits of the line
+    self.recent_xfitted = [] 
+
+    # average x values of the fitted line over the last n iterations
+    self.bestx = None     
+
+    # polynomial coefficients averaged over the last n iterations
+    self.best_fit = None  
+
+    # polynomial coefficients for the most recent fit
+    self.current_fit = [np.array([False])]  
+
+    # radius of curvature of the line in some units
+    self.radius_of_curvature = None 
+
+    # distance in meters of vehicle center from the line
+    self.line_base_pos = None 
+
+    # difference in fit coefficients between last and new fits
+    self.diff = None
+
+    # Define conversions in x and y from pixels space to meters
+    self.ym_per_pix = 30/720 # meters per pixel in y dimension
+    self.xm_per_pix = 3.7/700 # meters per pixel in x dimension
+
+  def preprocess(self, fitx, ploty):
+    self.current_fit = np.polyfit(fitx, ploty, 2)  
+
+    if self.best_fit is None:
+      self.diff = 0
+    else:
+      self.diff = sum(abs((self.current_fit - self.best_fit)/self.best_fit))
+
+  def update(self, detected, reset, fitx, ploty):
+    if detected:
+      self.undetected_counter = 0
+      self.recent_xfitted.append(fitx)
+      if len(self.recent_xfitted) > 5:
+        self.recent_xfitted.pop(0)
+
+      self.bestx = sum(self.recent_xfitted)/len(self.recent_xfitted)     
+      self.best_fit = np.polyfit(self.bestx, ploty, 2)  
+      self.radius_of_curvature = self.get_curvature(self.bestx, ploty) 
+    
+    if reset:
+        self.best_fit = None
+        self.recent_xfitted = []
+
+  def get_curvature(self, x, y):
+    y_eval = np.max(y)
+
+    # Fit new polynomials to x,y in world space
+    fit_cr =  np.polyfit(y*self.ym_per_pix, x*self.xm_per_pix, 2)
+    # Calculate the new radii of curvature
+    return ((1 + (2*fit_cr[0]*y_eval*self.ym_per_pix  + fit_cr[1])**2)**1.5)  / np.absolute(2*fit_cr[0])
+
+
 
 class limg(object):
-  def __init__(self, img, M, Minv, mtx, dist, name='curr', show_plot=False, save_plot=True):
-    self.img = img
-    self.img_shape = (img.shape[1], img.shape[0])
+  def __init__(self, M, Minv, mtx, dist, show_plot=False, save_plot=True):
+
     self.M = M
     self.Minv = Minv
     self.mtx = mtx
     self.dist = dist
-    self.name = splitext(basename(name))[0]
-    self.savename = self.name + '_out.png'
+
     self.show_plot = show_plot
     self.save_plot = save_plot
-
-    self.calc_undistort()
-    self.get_warp()
 
     self.sx_thresh=(10, 255)
     self.sy_thresh=(5,255)
     self.dir_thresh=(0, 10)
     self.gray_thresh=(30,255)
 
-    # Define conversions in x and y from pixels space to meters
-    self.ym_per_pix = 30/720 # meters per pixel in y dimension
-    self.xm_per_pix = 3.7/700 # meters per pixel in x dimension
-
     self.mixing_factor = 0.5
+
+    self.detected = True
+    self.reset = True
+    self.diff_thresh = 1000
+    self.undetected_counter = 0
+
+    self.undected_counter_thresh = 3
+
+    # Choose the number of sliding windows
+    self.nwindows = 9
+
+    # Set the width of the windows +/- margin
+    self.margin = 100
+
+    # Set minimum number of pixels found to recenter window
+    self.minpix = 50
+
+    self.img_shape = None
+    self.ploty = None
+
+    self.left_line = Line();
+    self.right_line = Line();
+
+    self.frame_count = 0
+
+  def process_img(self, img, name='curr'):
+    self.img = img
+    self.frame_count = self.frame_count + 1
+
+    if self.ploty is None:
+      self.img_shape = (img.shape[1], img.shape[0])
+      self.ploty = np.linspace(0, self.img_shape[0]-1, self.img_shape[0] )
+
+    self.name = splitext(basename(name))[0]
+    self.savename = 'out_imgs/' + self.name + '_out.png'
+
+    self.calc_undistort()
+    self.get_warp()
     self.get_gray()
 
     self.do_thresh()
     self.get_combined_binary()
+
+    # Create an output image to draw on and  visualize the result
+    self.out_img = np.dstack((self.binary_warped, self.binary_warped, self.binary_warped))*255
+
+    if self.reset:
+      print('window method')
+      self.get_lane_inds_windows()
+      self.used_windows = True
+      self.reset = False
+    else:
+      self.get_lane_inds_margin()
+      self.used_windows = False
+
+    if self.show_plot or self.save_plot:
+      self.out_img[self.nonzeroy[self.left_lane_inds],  self.nonzerox[self.left_lane_inds]] = [255, 0, 0]
+      self.out_img[self.nonzeroy[self.right_lane_inds], self.nonzerox[self.right_lane_inds]] = [0, 0, 255]
+      if not self.used_windows:
+        self.margin_plot_calcs()
+
+
     self.fitpoly()
+
     self.get_rect_plot_points()
-    self.get_curvature()
+    #self.get_curvature()
+    self.preprocess_lines()
+
+    if self.left_line.diff + self.right_line.diff > self.diff_thresh:
+      print("Line rejected")
+      self.detected = False
+      self.undetected_counter = self.undetected_counter + 1
+      if self.undetected_counter > self.undected_counter_thresh:
+        print("Line reset")
+        self.reset = True
+        self.undetected_counter = 0
+    else: 
+      self.detected = True
+      self.undetected_counter = 0
+
+    self.update_lines()
+
+    self.get_lane_img()
+    self.curvature = (self.left_line.radius_of_curvature + self.right_line.radius_of_curvature)/2
+    self.add_text_to_lane_img()
     if self.show_plot or self.save_plot:
       self.plot_process()
+          # Now our radius of curvature is in meters
+    # print("Curvature. Left: {:.0f} m Right: {:.0f} m".format(self.left_curverad, self.right_curverad))
 
-    # Now our radius of curvature is in meters
-    print("Curvature. Left: {:.0f} m Right: {:.0f} m".format(self.left_curverad, self.right_curverad))
+
+  def preprocess_lines(self):
+    self.left_line.preprocess( self.left_fitx,  self.ploty)
+    self.right_line.preprocess(self.right_fitx, self.ploty)
+
+  def update_lines(self):
+    self.left_line.update( self.detected, self.reset, self.left_fitx,  self.ploty)
+    self.right_line.update(self.detected, self.reset, self.right_fitx, self.ploty)
 
   def calc_undistort(self):
     self.undist = cv2.undistort(self.img, self.mtx, self.dist, None, self.mtx)
@@ -54,7 +192,7 @@ class limg(object):
   def get_gray(self):
     # Convert to HLS color space and separate the S channel
     # Note: img is the undistorted image
-    hls = cv2.cvtColor(self.warped, cv2.COLOR_BGR2HLS)
+    hls = cv2.cvtColor(self.warped, cv2.COLOR_RGB2HLS)
     self.gray = hls[:,:,1]*(1-self.mixing_factor) + hls[:,:,2]*self.mixing_factor
 
   def do_thresh(self):
@@ -78,13 +216,15 @@ class limg(object):
 
     self.binary_warped = combine_binary(combined_binary2, combined_binary4, '|')
 
-  def fitpoly(self):
+    # Identify the x and y positions of all nonzero pixels in the image
+    nonzero = self.binary_warped.nonzero()
+    self.nonzeroy = np.array(nonzero[0])
+    self.nonzerox = np.array(nonzero[1])
+
+  def get_lane_inds_windows(self):
     # Assuming you have created a warped binary image called "binary_warped"
     # Take a histogram of the bottom half of the image
     histogram = np.sum(self.binary_warped[self.binary_warped.shape[0]/2:,:], axis=0)
-
-    # Create an output image to draw on and  visualize the result
-    self.out_img = np.dstack((self.binary_warped, self.binary_warped, self.binary_warped))*255
 
     # Find the peak of the left and right halves of the histogram
     # These will be the starting point for the left and right lines
@@ -92,89 +232,63 @@ class limg(object):
     leftx_base = np.argmax(histogram[:midpoint])
     rightx_base = np.argmax(histogram[midpoint:]) + midpoint
 
-    # Choose the number of sliding windows
-    nwindows = 9
-
     # Set height of windows
-    window_height = np.int(self.binary_warped.shape[0]/nwindows)
-
-    # Identify the x and y positions of all nonzero pixels in the image
-    nonzero = self.binary_warped.nonzero()
-    nonzeroy = np.array(nonzero[0])
-    nonzerox = np.array(nonzero[1])
+    window_height = np.int(self.binary_warped.shape[0]/self.nwindows)
 
     # Current positions to be updated for each window
     leftx_current = leftx_base
     rightx_current = rightx_base
-
-    # Set the width of the windows +/- margin
-    margin = 100
-
-    # Set minimum number of pixels found to recenter window
-    minpix = 50
 
     # Create empty lists to receive left and right lane pixel indices
     left_lane_inds = []
     right_lane_inds = []
 
     # Step through the windows one by one
-    for window in range(nwindows):
+    for window in range(self.nwindows):
         # Identify window boundaries in x and y (and right and left)
         win_y_low = self.binary_warped.shape[0] - (window+1)*window_height
         win_y_high = self.binary_warped.shape[0] - window*window_height
-        win_xleft_low = leftx_current - margin
-        win_xleft_high = leftx_current + margin
-        win_xright_low = rightx_current - margin
-        win_xright_high = rightx_current + margin
+        win_xleft_low = leftx_current - self.margin
+        win_xleft_high = leftx_current + self.margin
+        win_xright_low = rightx_current - self.margin
+        win_xright_high = rightx_current + self.margin
         # Draw the windows on the visualization image
         cv2.rectangle(self.out_img,(win_xleft_low,win_y_low),(win_xleft_high,win_y_high),(0,255,0), 2) 
         cv2.rectangle(self.out_img,(win_xright_low,win_y_low),(win_xright_high,win_y_high),(0,255,0), 2) 
         # Identify the nonzero pixels in x and y within the window
-        good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xleft_low) & (nonzerox < win_xleft_high)).nonzero()[0]
-        good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xright_low) & (nonzerox < win_xright_high)).nonzero()[0]
+        good_left_inds =  ((self.nonzeroy >= win_y_low) & (self.nonzeroy < win_y_high) & (self.nonzerox >= win_xleft_low)  & (self.nonzerox < win_xleft_high)).nonzero()[0]
+        good_right_inds = ((self.nonzeroy >= win_y_low) & (self.nonzeroy < win_y_high) & (self.nonzerox >= win_xright_low) & (self.nonzerox < win_xright_high)).nonzero()[0]
         # Append these indices to the lists
         left_lane_inds.append(good_left_inds)
         right_lane_inds.append(good_right_inds)
         # If you found > minpix pixels, recenter next window on their mean position
-        if len(good_left_inds) > minpix:
-            leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
-        if len(good_right_inds) > minpix:        
-            rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
+        if len(good_left_inds) > self.minpix:
+            leftx_current = np.int(np.mean(self.nonzerox[good_left_inds]))
+        if len(good_right_inds) > self.minpix:        
+            rightx_current = np.int(np.mean(self.nonzerox[good_right_inds]))
 
     # Concatenate the arrays of indices
-    left_lane_inds = np.concatenate(left_lane_inds)
-    right_lane_inds = np.concatenate(right_lane_inds)
+    self.left_lane_inds = np.concatenate(left_lane_inds)
+    self.right_lane_inds = np.concatenate(right_lane_inds)
+ 
+  def get_lane_inds_margin(self):
+    # Assume you now have a new warped binary image 
+    # from the next frame of video (also called "binary_warped")
+    # It's now much easier to find line pixels!
 
-    self.out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
-    self.out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
+    self.left_lane_inds =  ((self.nonzerox > (self.left_fit[0]*(self.nonzeroy**2)  + self.left_fit[1]*self.nonzeroy  + self.left_fit[2] - self.margin))  & (self.nonzerox < (self.left_fit[0]*(self.nonzeroy**2)  + self.left_fit[1]*self.nonzeroy  + self.left_fit[2]  + self.margin))) 
+    self.right_lane_inds = ((self.nonzerox > (self.right_fit[0]*(self.nonzeroy**2) + self.right_fit[1]*self.nonzeroy + self.right_fit[2] - self.margin)) & (self.nonzerox < (self.right_fit[0]*(self.nonzeroy**2) + self.right_fit[1]*self.nonzeroy + self.right_fit[2] + self.margin)))  
 
-    # Extract left and right line pixel positions
-    self.leftx = nonzerox[left_lane_inds]
-    self.lefty = nonzeroy[left_lane_inds] 
-    self.rightx = nonzerox[right_lane_inds]
-    self.righty = nonzeroy[right_lane_inds] 
-
+  def fitpoly(self):
     # Fit a second order polynomial to each
-    self.left_fit = np.polyfit(self.lefty, self.leftx, 2)
-    self.right_fit = np.polyfit(self.righty, self.rightx, 2)
-
-
-  def get_curvature(self):
-    y_eval = np.max(self.ploty)
-
-    # Fit new polynomials to x,y in world space
-    left_fit_cr =  np.polyfit(self.ploty*self.ym_per_pix, self.left_fitx*self.xm_per_pix, 2)
-    right_fit_cr = np.polyfit(self.ploty*self.ym_per_pix, self.right_fitx*self.xm_per_pix, 2)
-    # Calculate the new radii of curvature
-    self.left_curverad = ((1 + (2*left_fit_cr[0]*y_eval*self.ym_per_pix + left_fit_cr[1])**2)**1.5) / np.absolute(2*left_fit_cr[0])
-    self.right_curverad = ((1 + (2*right_fit_cr[0]*y_eval*self.ym_per_pix + right_fit_cr[1])**2)**1.5) / np.absolute(2*right_fit_cr[0])
+    self.left_fit =  np.polyfit(self.nonzeroy[self.left_lane_inds] , self.nonzerox[self.left_lane_inds],  2)
+    self.right_fit = np.polyfit(self.nonzeroy[self.right_lane_inds], self.nonzerox[self.right_lane_inds], 2)
 
   def plot_process(self):
     f,axs = plt.subplots(2,3, figsize=(28,16))
-    axs[0,0].imshow(img2RGB(self.undist))
+    axs[0,0].imshow(self.undist)
     axs[0,1].imshow(self.gray, cmap='gray')
     axs[0,2].imshow(self.binary_warped, cmap='gray')
-
 
     self.plot_rect_method(axs[1,0])
     self.plot_2d_lane(axs[1,1])
@@ -186,9 +300,26 @@ class limg(object):
     plt.close()
 
   def get_rect_plot_points(self):
-    self.ploty = np.linspace(0, self.binary_warped.shape[0]-1, self.binary_warped.shape[0] )
     self.left_fitx = self.left_fit[0]*self.ploty**2 + self.left_fit[1]*self.ploty + self.left_fit[2]
     self.right_fitx = self.right_fit[0]*self.ploty**2 + self.right_fit[1]*self.ploty + self.right_fit[2]
+
+  def margin_plot_calcs(self):
+      # Create an image to draw on and an image to show the selection window
+      window_img = np.zeros_like(self.out_img)
+
+      # Generate a polygon to illustrate the search window area
+      # And recast the x and y points into usable format for cv2.fillPoly()
+      left_line_window1 = np.array([np.transpose(np.vstack([self.left_fitx-self.margin, self.ploty]))])
+      left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([self.left_fitx+self.margin, self.ploty])))])
+      left_line_pts = np.hstack((left_line_window1, left_line_window2))
+      right_line_window1 = np.array([np.transpose(np.vstack([self.right_fitx-self.margin, self.ploty]))])
+      right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([self.right_fitx+self.margin, self.ploty])))])
+      right_line_pts = np.hstack((right_line_window1, right_line_window2))
+
+      # Draw the lane onto the warped blank image
+      cv2.fillPoly(window_img, np.int_([left_line_pts]), (0,255, 0))
+      cv2.fillPoly(window_img, np.int_([right_line_pts]), (0,255, 0))
+      self.out_img = cv2.addWeighted(self.out_img, 1, window_img, 0.3, 0)
 
   def plot_rect_method(self, ax):
     ax.imshow(self.out_img)
@@ -197,7 +328,7 @@ class limg(object):
     ax.set_ylim(self.img_shape[1], 0)
 
   def plot_2d_lane(self, ax):
-    ax.imshow(img2RGB(self.warped))
+    ax.imshow(self.warped)
     self.plot_2d_lane_fits(ax, color='green')
     ax.set_xlim(0, self.img_shape[0])
     ax.set_ylim(self.img_shape[1], 0)
@@ -206,14 +337,16 @@ class limg(object):
     ax.plot(self.left_fitx,  self.ploty, color=color)
     ax.plot(self.right_fitx, self.ploty, color=color)
 
-  def plot_lane(self, ax):
+  def get_lane_img(self):
     # Create an image to draw the lines on
     color_warp = np.zeros_like(self.undist).astype(np.uint8)
     #color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
 
     # Recast the x and y points into usable format for cv2.fillPoly()
-    pts_left = np.array([np.transpose(np.vstack([self.left_fitx, self.ploty]))])
-    pts_right = np.array([np.flipud(np.transpose(np.vstack([self.right_fitx, self.ploty])))])
+    #print(self.left_line.bestx.shape)
+    #print(self.ploty.shape)
+    pts_left = np.array([np.transpose(np.vstack([self.left_line.bestx, self.ploty]))])
+    pts_right = np.array([np.flipud(np.transpose(np.vstack([self.right_line.bestx, self.ploty])))])
     pts = np.hstack((pts_left, pts_right))
 
     # Draw the lane onto the warped blank image
@@ -222,19 +355,30 @@ class limg(object):
     # Warp the blank back to original image space using inverse perspective matrix (Minv)
     newwarp = cv2.warpPerspective(color_warp, self.Minv, self.img_shape) 
     # Combine the result with the original image
-    result = cv2.addWeighted(self.undist, 1, newwarp, 0.3, 0)
-    ax.imshow(img2RGB(result))
+    self.lane_img = cv2.addWeighted(self.undist, 1, newwarp, 0.3, 0)
+
+  def plot_lane(self, ax):
+    ax.imshow(self.lane_img)
+
+  def add_text_to_lane_img(self):
+    #s = "Radius of Curvature = {:.0f}(m)".format(self.curvature)
+    #s = "Diff: {:.01f}, {:.01f}".format(self.diff[0], self.diff[1])
+    s = "{}: {}, {}".format(self.frame_count, self.detected, self.reset)
+    cv2.putText(self.lane_img, s, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, 255)
 
 def read_img(filename):
   img = cv2.imread(filename)
-  print('Read image: {} Size: {}'.format(filename, img.shape))
+  #print('Read image: {} Size: {}'.format(filename, img.shape))
   return img
 
 def img2gray(img):
-  return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+  return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
 def img2RGB(img):
   return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+def img2BGR(img):
+  return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
 def get_calibration(images, nx, ny):
 
@@ -296,9 +440,9 @@ def check_calibration(filename, mtx, dist):
   undist = cv2.undistort(img, mtx, dist, None, mtx)
 
   plt.figure()
-  plt.imshow(img2RGB(img))
+  plt.imshow(img)
   plt.figure()
-  plt.imshow(img2RGB(undist))
+  plt.imshow(undist)
   plt.show()
   plt.close()
 
@@ -377,7 +521,7 @@ def warp(img, src, offset):
   return M, Minv, img_size
 
 
-def do_stuff(show_plot=True, save_plot=True):
+def do_stuff(show_plot=True, save_plot=True, fname='project_video.mp4', MAX_FRAMES=10000, n_mod=1, fps=16):
   do_cal = False
   check_cal = False
 
@@ -395,10 +539,36 @@ def do_stuff(show_plot=True, save_plot=True):
   filenames = glob.glob('test_images/*.jpg')
   #filenames = ['test_images/test5.jpg']
 
-  for i in range(len(filenames)):
-    img = read_img(filenames[i])
-    ll = limg(img, M, Minv, mtx, dist, filenames[i], show_plot=show_plot, save_plot=save_plot)
+  ll = limg(M, Minv, mtx, dist, show_plot=show_plot, save_plot=save_plot)
+  #for i in range(len(filenames)):
+  #  img = read_img(filenames[i])
+  #  img = img2RGB(img)
+  #  ll.process_img(img, filenames[i])
 
-  return 1
+
+  clip = VideoFileClip(fname)
+  n_frames = int(clip.fps * clip.duration)
+  n_frames = min(MAX_FRAMES, n_frames) 
+  count = 0
+  images_list = []
+  for frame in clip.iter_frames():
+    count = count+1
+    if count % n_mod == 0:
+      print("{} of {}".format(count, n_frames))
+      ll.process_img(frame, str(count))
+      images_list.append(ll.lane_img)
+    if count >= MAX_FRAMES:
+      break
+
+  clip = ImageSequenceClip(images_list, fps=fps)
+
+  savename = splitext(basename(fname))[0]
+  savename = 'out_imgs/' + savename + '_out.mp4'
+  clip.write_videofile(savename) # default codec: 'libx264', 24 fps
+
+
+  return ll
+
+
 
 
