@@ -34,15 +34,16 @@ class Line():
     self.ym_per_pix = 30/720 # meters per pixel in y dimension
     self.xm_per_pix = 3.7/700 # meters per pixel in x dimension
 
-  def preprocess(self, fitx, ploty):
+  def preprocess(self, fitx, ploty, img_shape):
     self.current_fit = np.polyfit(fitx, ploty, 2)  
+    self.curr_curvature, self.curr_distance = self.get_geometry(fitx, ploty, img_shape) 
 
     if self.best_fit is None:
       self.diff = 0
     else:
       self.diff = sum(abs((self.current_fit - self.best_fit)/self.best_fit))
 
-  def update(self, detected, reset, fitx, ploty):
+  def update(self, detected, reset, fitx, ploty, img_shape):
     if detected:
       self.undetected_counter = 0
       self.recent_xfitted.append(fitx)
@@ -51,19 +52,22 @@ class Line():
 
       self.bestx = sum(self.recent_xfitted)/len(self.recent_xfitted)     
       self.best_fit = np.polyfit(self.bestx, ploty, 2)  
-      self.radius_of_curvature = self.get_curvature(self.bestx, ploty) 
+      self.radius_of_curvature, self.distance = self.get_geometry(self.bestx, ploty, img_shape) 
     
     if reset:
         self.best_fit = None
         self.recent_xfitted = []
 
-  def get_curvature(self, x, y):
+  def get_geometry(self, x, y, img_shape):
     y_eval = np.max(y)
 
     # Fit new polynomials to x,y in world space
     fit_cr =  np.polyfit(y*self.ym_per_pix, x*self.xm_per_pix, 2)
     # Calculate the new radii of curvature
-    return ((1 + (2*fit_cr[0]*y_eval*self.ym_per_pix  + fit_cr[1])**2)**1.5)  / np.absolute(2*fit_cr[0])
+    curvature = ((1 + (2*fit_cr[0]*y_eval*self.ym_per_pix  + fit_cr[1])**2)**1.5)  / np.absolute(2*fit_cr[0])
+
+    distance = np.absolute(fit_cr[2] - self.xm_per_pix*img_shape[0]/2)
+    return curvature, distance
 
 
 
@@ -92,6 +96,10 @@ class limg(object):
 
     self.undected_counter_thresh = 3
 
+    self.width_expected = 3.7
+    self.width_thresh = 1.0
+    self.distance_from_center_thresh = 2
+
     # Choose the number of sliding windows
     self.nwindows = 9
 
@@ -108,6 +116,8 @@ class limg(object):
     self.right_line = Line();
 
     self.frame_count = 0
+
+    self.initialized = False
 
   def process_img(self, img, name='curr'):
     self.img = img
@@ -135,15 +145,15 @@ class limg(object):
       self.get_lane_inds_windows()
       self.used_windows = True
       self.reset = False
+      self.initialized = False
     else:
       self.get_lane_inds_margin()
       self.used_windows = False
 
-    if self.show_plot or self.save_plot:
-      self.out_img[self.nonzeroy[self.left_lane_inds],  self.nonzerox[self.left_lane_inds]] = [255, 0, 0]
-      self.out_img[self.nonzeroy[self.right_lane_inds], self.nonzerox[self.right_lane_inds]] = [0, 0, 255]
-      if not self.used_windows:
-        self.margin_plot_calcs()
+    self.out_img[self.nonzeroy[self.left_lane_inds],  self.nonzerox[self.left_lane_inds]] = [255, 0, 0]
+    self.out_img[self.nonzeroy[self.right_lane_inds], self.nonzerox[self.right_lane_inds]] = [0, 255, 0]
+    if not self.used_windows:
+      self.margin_plot_calcs()
 
 
     self.fitpoly()
@@ -152,36 +162,56 @@ class limg(object):
     #self.get_curvature()
     self.preprocess_lines()
 
-    if self.left_line.diff + self.right_line.diff > self.diff_thresh:
-      print("Line rejected")
-      self.detected = False
+    self.is_good_line()
+    if not self.detected:
       self.undetected_counter = self.undetected_counter + 1
       if self.undetected_counter > self.undected_counter_thresh:
         print("Line reset")
         self.reset = True
         self.undetected_counter = 0
     else: 
-      self.detected = True
       self.undetected_counter = 0
 
     self.update_lines()
 
     self.get_lane_img()
     self.curvature = (self.left_line.radius_of_curvature + self.right_line.radius_of_curvature)/2
+    self.distance_from_center = (self.left_line.distance - self.right_line.distance)/2
+    self.width = self.left_line.distance+self.right_line.distance
     self.add_text_to_lane_img()
     if self.show_plot or self.save_plot:
       self.plot_process()
           # Now our radius of curvature is in meters
     # print("Curvature. Left: {:.0f} m Right: {:.0f} m".format(self.left_curverad, self.right_curverad))
 
+  def is_good_line(self):
+    self.detected = True
+    
+    if self.left_line.diff + self.right_line.diff > self.diff_thresh:
+      print("Line rejected on bad fit")
+      self.detected = False
+
+    self.curr_width = self.left_line.curr_distance + self.right_line.curr_distance
+    if np.absolute(self.curr_width - self.width_expected) > self.width_thresh:
+      print("Line rejected on bad width")
+      self.detected = False
+
+    self.curr_distance_from_center = (self.left_line.curr_distance - self.right_line.curr_distance)/2
+    if np.absolute(self.curr_distance_from_center) > self.distance_from_center_thresh:
+      print("Line rejected on bad distance from center")
+      self.detected = False
+
+    if self.initialized is False:
+      self.detected = True
+      self.initialized = True
 
   def preprocess_lines(self):
-    self.left_line.preprocess( self.left_fitx,  self.ploty)
-    self.right_line.preprocess(self.right_fitx, self.ploty)
+    self.left_line.preprocess( self.left_fitx,  self.ploty, self.img_shape)
+    self.right_line.preprocess(self.right_fitx, self.ploty, self.img_shape)
 
   def update_lines(self):
-    self.left_line.update( self.detected, self.reset, self.left_fitx,  self.ploty)
-    self.right_line.update(self.detected, self.reset, self.right_fitx, self.ploty)
+    self.left_line.update( self.detected, self.reset, self.left_fitx,  self.ploty, self.img_shape)
+    self.right_line.update(self.detected, self.reset, self.right_fitx, self.ploty, self.img_shape)
 
   def calc_undistort(self):
     self.undist = cv2.undistort(self.img, self.mtx, self.dist, None, self.mtx)
@@ -253,8 +283,8 @@ class limg(object):
         win_xright_low = rightx_current - self.margin
         win_xright_high = rightx_current + self.margin
         # Draw the windows on the visualization image
-        cv2.rectangle(self.out_img,(win_xleft_low,win_y_low),(win_xleft_high,win_y_high),(0,255,0), 2) 
-        cv2.rectangle(self.out_img,(win_xright_low,win_y_low),(win_xright_high,win_y_high),(0,255,0), 2) 
+        cv2.rectangle(self.out_img,(win_xleft_low,win_y_low),(win_xleft_high,win_y_high),(255,255,0), 2) 
+        cv2.rectangle(self.out_img,(win_xright_low,win_y_low),(win_xright_high,win_y_high),(255,255,0), 2) 
         # Identify the nonzero pixels in x and y within the window
         good_left_inds =  ((self.nonzeroy >= win_y_low) & (self.nonzeroy < win_y_high) & (self.nonzerox >= win_xleft_low)  & (self.nonzerox < win_xleft_high)).nonzero()[0]
         good_right_inds = ((self.nonzeroy >= win_y_low) & (self.nonzeroy < win_y_high) & (self.nonzerox >= win_xright_low) & (self.nonzerox < win_xright_high)).nonzero()[0]
@@ -317,9 +347,9 @@ class limg(object):
       right_line_pts = np.hstack((right_line_window1, right_line_window2))
 
       # Draw the lane onto the warped blank image
-      cv2.fillPoly(window_img, np.int_([left_line_pts]), (0,255, 0))
-      cv2.fillPoly(window_img, np.int_([right_line_pts]), (0,255, 0))
-      self.out_img = cv2.addWeighted(self.out_img, 1, window_img, 0.3, 0)
+      cv2.fillPoly(window_img, np.int_([left_line_pts]), (255,255,0))
+      cv2.fillPoly(window_img, np.int_([right_line_pts]), (255,255,0))
+      self.out_img = cv2.addWeighted(self.out_img, 1, window_img, 0.0, 0)
 
   def plot_rect_method(self, ax):
     ax.imshow(self.out_img)
@@ -350,21 +380,29 @@ class limg(object):
     pts = np.hstack((pts_left, pts_right))
 
     # Draw the lane onto the warped blank image
-    cv2.fillPoly(color_warp, np.int_([pts]), (0,255, 0))
+    cv2.fillPoly(color_warp, np.int_([pts]), [0,0,255])
 
     # Warp the blank back to original image space using inverse perspective matrix (Minv)
     newwarp = cv2.warpPerspective(color_warp, self.Minv, self.img_shape) 
+    newwarp2 = cv2.warpPerspective(self.out_img, self.Minv, self.img_shape) 
     # Combine the result with the original image
-    self.lane_img = cv2.addWeighted(self.undist, 1, newwarp, 0.3, 0)
+    self.lane_img = cv2.addWeighted(self.undist, 1.0, newwarp, 0.3, 0)
+    self.lane_img = cv2.addWeighted(self.lane_img, 1, newwarp2, 1.0, 0)
 
   def plot_lane(self, ax):
     ax.imshow(self.lane_img)
 
   def add_text_to_lane_img(self):
-    #s = "Radius of Curvature = {:.0f}(m)".format(self.curvature)
+    s = "Radius of Curvature = {:.0f}(m)".format(self.curvature)
+    s2 = "Vehicle is {:.02f}m from center. Width: {:.01f}m".format(self.distance_from_center, self.width)
+    #s4 = "Vehicle is {:.02f}m from center. Width: {:.01f}m".format(self.curr_distance_from_center, self.curr_width)
+    s3 = "Video Frame: {:04}: Line Detected: {}  Reset: {}".format(self.frame_count, self.detected, self.reset)
     #s = "Diff: {:.01f}, {:.01f}".format(self.diff[0], self.diff[1])
-    s = "{}: {}, {}".format(self.frame_count, self.detected, self.reset)
-    cv2.putText(self.lane_img, s, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, 255)
+    #s = "{}: {}, {}".format(self.frame_count, self.detected, self.reset)
+    cv2.putText(self.lane_img, s, (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, 255)
+    cv2.putText(self.lane_img, s2, (50, 120), cv2.FONT_HERSHEY_SIMPLEX, 1, 255)
+    cv2.putText(self.lane_img, s3, (50, 160), cv2.FONT_HERSHEY_SIMPLEX, 1, 255) 
+    #cv2.putText(self.lane_img, s4, (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, 255) 
 
 def read_img(filename):
   img = cv2.imread(filename)
@@ -567,7 +605,7 @@ def do_stuff(show_plot=True, save_plot=True, fname='project_video.mp4', MAX_FRAM
   clip.write_videofile(savename) # default codec: 'libx264', 24 fps
 
 
-  return ll
+  return ll, clip
 
 
 
