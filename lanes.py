@@ -9,31 +9,36 @@ from moviepy.editor import VideoFileClip, ImageSequenceClip
 import Lane
 from lane_utils import *
 
-def run_lane_lines(show_plot=True, save_plot=True, fname='project_video.mp4', MAX_FRAMES=10000, n_mod=1, fps=16):
-  do_cal = False
-  check_cal = False
 
-  nx = 9
-  ny = 6
+def do_cal():
+  run_calibration('camera_cal/calibration*.jpg', nx=9, ny=6)
 
-  if do_cal:
-    run_calibration('camera_cal/calibration*.jpg', nx, ny)
 
+def check_cal():
+  mtx, dist, M, Minv = load_calibration()
+  check_calibration('camera_cal/calibration1.jpg', mtx, dist)
+
+
+def test_lane_lines(show_plot=True, save_plot=True):
   mtx, dist, M, Minv = load_calibration()
 
-  if check_cal:
-    check_calibration('camera_cal/calibration1.jpg', mtx, dist)
+  filenames = glob.glob('test_images/*.jpg')
+  #filenames = ['test_images/test1.jpg']
 
-  #filenames = glob.glob('test_images/*.jpg')
-  filenames = ['test_images/test1.jpg']
+  lane = Lane.Lane(M, Minv, mtx, dist, show_plot=show_plot, save_plot=save_plot)
 
-  ll = Lane.Lane(M, Minv, mtx, dist, show_plot=show_plot, save_plot=save_plot)
-  # for i in range(len(filenames)):
-  #  img = read_img(filenames[i])
-  #  img = img2RGB(img)
-  #  ll.process_img(img, filenames[i])
+  for i in range(len(filenames)):
+    img = read_img(filenames[i])
+    img = img2RGB(img)
+    lane.process_img(img, filenames[i])
 
-  # return ll
+  return lane
+
+
+def run_lane_lines(show_plot=True, save_plot=True, fname='project_video.mp4', MAX_FRAMES=10000, n_mod=1, fps=16):
+  mtx, dist, M, Minv = load_calibration()
+
+  lane = Lane.Lane(M, Minv, mtx, dist, show_plot=show_plot, save_plot=save_plot)
 
   clip = VideoFileClip(fname)
   n_frames = int(clip.fps * clip.duration)
@@ -44,8 +49,8 @@ def run_lane_lines(show_plot=True, save_plot=True, fname='project_video.mp4', MA
     count = count+1
     if count % n_mod == 0:
       print("{} of {}".format(count, n_frames))
-      ll.process_img(frame, str(count))
-      images_list.append(ll.lane_img)
+      lane.process_img(frame, str(count))
+      images_list.append(lane.lane_img)
     if count >= MAX_FRAMES:
       break
 
@@ -53,10 +58,9 @@ def run_lane_lines(show_plot=True, save_plot=True, fname='project_video.mp4', MA
 
   savename = splitext(basename(fname))[0]
   savename = 'out_imgs/' + savename + '_out.mp4'
-  clip.write_videofile(savename) # default codec: 'libx264', 24 fps
+  clip.write_videofile(savename) 
 
-
-  return ll, clip
+  return lane, clip
 
 
 

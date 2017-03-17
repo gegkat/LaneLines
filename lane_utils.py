@@ -62,7 +62,7 @@ def run_calibration(directory, nx, ny):
   mtx, dist = get_calibration(images, nx, ny)
 
   # Use first image for calculating warp matrices
-  M, Minv = get_warp_matrices(images[0])
+  M, Minv = get_warp_matrices(images[0], mtx, dist)
 
   # Save calibration and Warp matrices to pickle
   dist_pickle = {}
@@ -72,7 +72,7 @@ def run_calibration(directory, nx, ny):
   dist_pickle["Minv"] = Minv
   pickle.dump( dist_pickle, open( "camera_cal/cal.p", "wb" ) )
 
-def get_warp_matrices(fname):
+def get_warp_matrices(fname, mtx, dist):
 
   # Read image
   img = read_img(fname)
