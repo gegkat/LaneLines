@@ -126,11 +126,11 @@ Yellow = polynomial fit
 #### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
 The curvature of each lane line is calculated in step 11 of the pipeline. The code for this is in the function `get_geometry()` found at lines 95 to 118 of `Line.py`. The method is to first scale the pixels of the lane lines to convert to meters, then make a new 2nd degree polynomial fit with the scaled lane line indices. Estimating curvature at the current driving position is done by evaluating the curvature of this polynomial at the point where the polynomial intersects the base of the image. The equation for the curvature of the polynomial of the form  
-f(y) = Ay<sup>2</sup> + By + C  
+<code>f(y) = Ay<sup>2</sup> + By + C</code>  
 at a point y is   
-curvature = [(1 + (2Ay + B)<sup>2</sup>)<sup>1.5</sup>]/\|2*C\|  
+<code>curvature = [(1 + (2Ay + B)<sup>2</sup>)<sup>1.5</sup>]/\|2*C\|</code>  
 To make the calculation even simpler, I flipped the y values of the image before fitting the polynomial so that y value at the base of the image is 0. This simplifies the curvature equation to   
-curvature = (1 + B<sup>2</sup>)<sup>1.5</sup> / \|2*C\|   
+<code>curvature = (1 + B<sup>2</sup>)<sup>1.5</sup> / \|2*C\|</code>   
 
 The radius of curvature of the entire lane is calculated by averaging the curvature of each lane line in step 12 of my pipeline. The code is line 232 of `Lane.py`. 
 
