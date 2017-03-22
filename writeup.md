@@ -19,7 +19,7 @@ The goals / steps of this project are the following:
 [image4]: ./output_images/binary_threshold_test_image.png "Binary Example"
 [image5]: ./output_images/window_method_lane_line_id_test_image.png "Fit Window Visual"
 [image6]: ./output_images/margin_method_test_image.png "Fit Margin Visual"
-[image7]: ./output_images/lane_estimate_test_image.png "Output"
+[image7]: ./output_images/output.png "Output"
 [video1]: ./output_images/project_video_output.mp4 "Video"
 
 ## [Rubric](https://review.udacity.com/#!/rubrics/571/view) Points
@@ -140,7 +140,7 @@ The distance of each lane line from the center of the image is calculated in ste
 
 #### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
 
-I implemented this as step 13 of my pipeline as the function `get_lane_img()` in `Lane.py`, lines 417 to 442. When I plot my result I include a shaded green area for the lane estimate, as well as a blue highlight of pixels identified for the left lane line, red pixels for the right lane line, and white for pixels that passed the binary threshold but were not matched to a lane line. Additionally, if the window method was used then green rectanges of the windows is also included. 
+I implemented this as step 13 of my pipeline as the function `get_lane_img()` in `Lane.py`, lines 417 to 442. When I plot my result I include a shaded purple area for the lane estimate, as well as a red highlight of pixels identified for the left lane line, green pixels for the right lane line, and white for pixels that passed the binary threshold but were not matched to a lane line. Additionally, if the window method was used then yellow rectangles of the windows is also included. 
 
 Here is an example of my result on a test image:
 
