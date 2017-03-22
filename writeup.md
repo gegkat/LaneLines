@@ -26,15 +26,15 @@ The goals / steps of this project are the following:
 ###Here I will consider the rubric points individually and describe how I addressed each point in my implementation.  
 
 ---
-###Writeup / README
+### Writeup / README
 
-####1. Provide a Writeup / README that includes all the rubric points and how you addressed each one.  You can submit your writeup as markdown or pdf.  [Here](https://github.com/udacity/CarND-Advanced-Lane-Lines/blob/master/writeup_template.md) is a template writeup for this project you can use as a guide and a starting point.  
+#### 1. Provide a Writeup / README that includes all the rubric points and how you addressed each one.  You can submit your writeup as markdown or pdf.  [Here](https://github.com/udacity/CarND-Advanced-Lane-Lines/blob/master/writeup_template.md) is a template writeup for this project you can use as a guide and a starting point.  
 
 You're reading it!
 
-###Camera Calibration
+### Camera Calibration
 
-####1. Briefly state how you computed the camera matrix and distortion coefficients. Provide an example of a distortion corrected calibration image.
+#### 1. Briefly state how you computed the camera matrix and distortion coefficients. Provide an example of a distortion corrected calibration image.
 
 The code for this step is contained in the function get_calibration(), lines 22-54 of `lane_utils.py`.
 
@@ -44,9 +44,9 @@ I then used the output `objpoints` and `imgpoints` to compute the camera calibra
 
 ![alt text][image1]
 
-###Pipeline (single images)
+### Pipeline (single images)
 
-####1. Provide an example of a distortion-corrected image.
+#### 1. Provide an example of a distortion-corrected image.
 
 The code for my pipeline is executed by the funciton `process_img()` in the file `Lane.py`. The distortion correction is the first step of the pipeline and is performed in line 123 of `Lane.py`. This step uses the mtx and dist matrices obtained from the calibration pre-processing step performed on checkerboard images and saved with a pickle file. 
 
@@ -54,7 +54,7 @@ This is an example of an undistorted test image:
 
 ![alt text][image2]
 
-####2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
+#### 2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
 
 In my pipeline I choose to do the binary thresholding after the perspective transform because this converts the lane lines to be more vertical in the resulting warped image. I used a combination of color and gradient thresholds to generate a binary image as steps 3 and 4 in my pipeline which can be found in lines 131-141 of `Lane.py`. These steps make use of the functions `sobel()`, `absgraddir()` and `binary_thresh()` found in lines 125-158 of `lane_utlis.py`. To get a single dimension of color for my thresholding that didn't miss any lane lines I used an averaging of the L and S channels in the HLS color space. 
 
@@ -62,7 +62,7 @@ Here's an example of my output for this step.
 
 ![alt text][image4]
 
-####3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
+#### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
 
 The perspective transform is performed as step 2 of my pipeline on line 126 of `Lane.py`. The matrix for the transform is calculated in a preprocessing step at the same time as camera calibration and saved in a pickle file. This is performed by the function `get_warp_matrices()` on lines 75 to 105 in `lane_utlis.py`.
 
@@ -95,7 +95,7 @@ I verified that my perspective transform was working as expected by testing on a
 
 ![alt text][image3]
 
-####4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
+#### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
 Identifying lane-line pixels is step 6 in my pipeline. This is done with either the function `get_lane_inds_window()` or the function `get_line_inds_margin()`. 
 
@@ -105,9 +105,13 @@ Here is visual demonstration of the lane indices detection and polynomial fit us
 
 ![alt text][image6]
 Green = search area
+
 Blue = left lane line indices
+
 Red = right lane line indices
+
 White = met binary threshold
+
 Yellow = polynomial fit
 
 When a previous good lane line positions is not known, a window method is used to find the lane-line pixels. This is executed in lines 272 to 320 of `Lane.py`. The first step is to calculate a histogram of of active pixels in the bottom half of the binary threshold image. Then the bin with the most active pixels from the left and right halves of the image are selected as the base of the right and left lane lines. Next a rectangle 200 pixels wide and 1/9th the image height is centered around the lane line base points. Any active pixels in this window are identified as lane-line pixels. The window is moved up to the next 1/9th of the image vertically and recentered horizontally to the centroid of the previous window in X. This is repeated 9 times until the top of the image is reached. 
@@ -118,12 +122,16 @@ Here is visual demonstration of the lane indices detection and polynomial fit us
 
 ![alt text][image5]
 Green = search area windows
+
 Blue = left lane line indices
+
 Red = right lane line indices
+
 White = met binary threshold
+
 Yellow = polynomial fit
 
-####5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
+#### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
 The curvature of each lane line is calculated in step 11 of the pipeline. The code for this is in the function `get_geometry()` found at lines 95 to 118 of `Line.py`. The method is to first scale the pixels of the lane lines to convert to meters, then make a new 2nd degree polynomial fit with the scaled lane line indices. Estimating curvature at the current driving position is done by evaluating the curvature of this polynomial at the point where the polynomial intersects the base of the image. The equation for the curvature of the polynomial of the form 
 `f(y) = A*y^2 + B*y + C`
@@ -138,7 +146,7 @@ The lane position of the vehicle with respect to center is done by first estimat
 
 The distance of each lane line from the center of the image is calculated in step 11 of the pipeline and on lines 95 to 118 of `Line.py`. The same polynomial from the curvature calculation is used to calculate the difference between the camera center position converted to meters and the fit polynomial evaluated at the base of the image (y=0 in this case, so f(0) = C). 
 
-####6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
+#### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
 
 I implemented this as step 13 of my pipeline as the function `get_lane_img()` in `Lane.py`, lines 417 to 442. When I plot my result I include a shaded green area for the lane estimate, as well as a blue highlight of pixels identified for the left lane line, red pixels for the right lane line, and white for pixels that passed the binary threshold but were not matched to a lane line. Additionally, if the window method was used then green rectanges of the windows is also included. 
 
@@ -148,17 +156,17 @@ Here is an example of my result on a test image:
 
 ---
 
-###Pipeline (video)
+### Pipeline (video)
 
-####1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
+#### 1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
 
 Here's a [link to my video result](./output_images/project_video_output.mp4)
 
 ---
 
-###Discussion
+### Discussion
 
-####1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
+#### 1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
 
 In my process, I spent quite a bit of time on fine tuning the specific threshold values for converting the image to a binary image of candidate lane lines. I found that my results were sensitive to these thresholds. Although it was not too hard to find values that worked well for the project video, the same thresholds did not work as well for the challenge videos. One way that I could improve my pipeline would be to manually label lane lines and then use a learning algorithm to search the parameter space for thresholds that gave the best accuracy for detecting pixels that are part of lane lines. 
 
