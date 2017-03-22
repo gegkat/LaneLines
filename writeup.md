@@ -104,15 +104,11 @@ The margin method is used if valid lane lines were identified recently in the vi
 Here is visual demonstration of the lane indices detection and polynomial fit using the margin method. 
 
 ![alt text][image6]
-Green = search area
-
-Blue = left lane line indices
-
-Red = right lane line indices
-
-White = met binary threshold
-
-Yellow = polynomial fit
+Green = search area  
+Blue = left lane line indices  
+Red = right lane line indices  
+White = met binary threshold  
+Yellow = polynomial fit  
 
 When a previous good lane line positions is not known, a window method is used to find the lane-line pixels. This is executed in lines 272 to 320 of `Lane.py`. The first step is to calculate a histogram of of active pixels in the bottom half of the binary threshold image. Then the bin with the most active pixels from the left and right halves of the image are selected as the base of the right and left lane lines. Next a rectangle 200 pixels wide and 1/9th the image height is centered around the lane line base points. Any active pixels in this window are identified as lane-line pixels. The window is moved up to the next 1/9th of the image vertically and recentered horizontally to the centroid of the previous window in X. This is repeated 9 times until the top of the image is reached. 
 
@@ -121,29 +117,21 @@ Fitting the lane-line pixels to a 2nd order polynomial is step 7 of the pipeline
 Here is visual demonstration of the lane indices detection and polynomial fit using the window method. 
 
 ![alt text][image5]
-Green = search area windows
-
-Blue = left lane line indices
-
-Red = right lane line indices
-
-White = met binary threshold
-
-Yellow = polynomial fit
+Green = search area windows  
+Blue = left lane line indices  
+Red = right lane line indices  
+White = met binary threshold  
+Yellow = polynomial fit  
 
 #### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
 The curvature of each lane line is calculated in step 11 of the pipeline. The code for this is in the function `get_geometry()` found at lines 95 to 118 of `Line.py`. The method is to first scale the pixels of the lane lines to convert to meters, then make a new 2nd degree polynomial fit with the scaled lane line indices. Estimating curvature at the current driving position is done by evaluating the curvature of this polynomial at the point where the polynomial intersects the base of the image. The equation for the curvature of the polynomial of the form 
 
-f(y) = Ay^2 + By + C
-
-at a point y is 
-
-curvature = [(1 + (2*A*y + B)^2^)^1.5^] / |2*C|
-
-To make the calculation even simpler, I flipped the y values of the image before fitting the polynomial so that y value at the base of the image is 0. This simplifies the curvature equation to 
-
-curvature = (1 + B^2^)^1.5^/ |2*C|
+f(y) = Ay^2 + By + C  
+at a point y is   
+curvature = [(1 + (2*A*y + B)^2^)^1.5^] / |2*C|  
+To make the calculation even simpler, I flipped the y values of the image before fitting the polynomial so that y value at the base of the image is 0. This simplifies the curvature equation to   
+curvature = (1 + B^2^)^1.5^/ |2*C|  
 
 The radius of curvature of the entire lane is calculated by averaging the curvature of each lane line in step 12 of my pipeline. The code is line 232 of `Lane.py`. 
 
