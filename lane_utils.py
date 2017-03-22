@@ -77,23 +77,17 @@ def get_warp_matrices(fname, mtx, dist):
   # Read image
   img = read_img(fname)
 
-  # Undistort
-  undist = cv2.undistort(img, mtx, dist, None, mtx)
-
-  # Source points around edges of lane lines for warp matrices
-  src = np.float32([(595, 450), (680, 450), (1080, 720), (230, 720), ])
-  offset = [300, 0] # offset for dst points
-
-  # Get warp  matrices
-  offsetx = offset[0] # offset for dst points
-  offsety = offset[1]
-
   # Grab the image shape
   img_size = (img.shape[1], img.shape[0])
 
-  # For destination points, I'm arbitrarily choosing some points to be
-  # a nice fit for displaying our warped result 
-  # again, not exact, but close enough for our purposes
+  # Source points around edges of lane lines for warp matrices
+  src = np.float32([(595, 450), (680, 450), (1080, 720), (230, 720), ])
+
+  # Offset for dst points. Choosen to get resulting image that
+  # includes only relevant portion of road
+  offsetx = 300 
+  offsety = 0
+
   dst = np.float32([[offsetx,               offsety ] , 
                     [img_size[0] - offsetx, offsety] , 
                     [img_size[0] - offsetx, img_size[1] - offsety] , 
@@ -107,12 +101,11 @@ def get_warp_matrices(fname, mtx, dist):
 def check_calibration(filename, mtx, dist):
   img = read_img(filename)
   undist = cv2.undistort(img, mtx, dist, None, mtx)
+  f,axs = plt.subplots(2,1, figsize=(16,12))
 
-  plt.figure()
-  plt.imshow(img)
-  plt.figure()
-  plt.imshow(undist)
-  plt.show()
+  axs[0].imshow(img)
+  axs[1].imshow(undist)
+  plt.savefig('./output_images/undistorted_output.png')
   plt.close()
 
 def load_calibration():

@@ -111,7 +111,7 @@ class Line():
     # Calculate radius of curvature
     # curvature = [(1 + (2*A*y + B)^2)^1.5] / abs(2*C)
     # Since y = 0, simplifies to:
-    # curvature = (1 + B^2)1.5/ abs(2*C)
+    # curvature = (1 + B^2)^1.5/ abs(2*C)
     curvature = ((1 + fit_cr[1]**2)**1.5)  / np.absolute(2*fit_cr[0])
     distance = np.absolute(fit_cr[2] - self.xm_per_pix*img_shape[0]/2)
 

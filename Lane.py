@@ -380,7 +380,7 @@ class Lane(object):
       # Draw the lane onto the warped blank image
       cv2.fillPoly(window_img, np.int_([left_line_pts]), (0,255,0))
       cv2.fillPoly(window_img, np.int_([right_line_pts]), (0,255,0))
-      self.out_img = cv2.addWeighted(self.out_img, 1, window_img, 0.0, 0)
+      self.out_img = cv2.addWeighted(self.out_img, 1, window_img, 0.5, 0)
 
 
   # Do plot showing lane detection
